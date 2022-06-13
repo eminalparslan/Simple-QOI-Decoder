@@ -11,7 +11,7 @@ This project was inspired by [this video](https://www.youtube.com/watch?v=EFUYNo
 Because of the simplicity of the PPM format, it can't handle transparency. In the future, I might change the output format from PPM to [PAM](http://netpbm.sourceforge.net/doc/pam.html),
 which is from the same [Netbpm](http://netpbm.sourceforge.net/doc/index.html) suite and allows for transparent images through alpha channels.
 
-## Helpful Resources:
+## Resources:
  - [PPM Documentation](http://netpbm.sourceforge.net/doc/index.html#transparency)
  - [QOI Spec](https://qoiformat.org/qoi-specification.pdf) (yes, it's only one page)
  - Test images are from [here](https://qoiformat.org/)
