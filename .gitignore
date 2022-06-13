@@ -1,0 +1,5 @@
+.DS_Store
+.ccls-cache/
+main.dSYM/
+references/
+output.ppm
