@@ -44,14 +44,14 @@ void reverse_bytes(uint8_t *bytes, size_t size) {
   }
 }
 
-void interpret_header(qoi_header *header) {
+void print_image_details(qoi_header *header) {
   // reverse width and height bytes (big-endian to little-endian)
   uint8_t *width_ptr = (uint8_t *) &header->width;
   uint8_t *height_ptr = (uint8_t *) &header->height;
-  size_t num_bytes = sizeof(header->width);
-  reverse_bytes(width_ptr, num_bytes);
-  reverse_bytes(height_ptr, num_bytes);
+  reverse_bytes(width_ptr, sizeof(header->width));
+  reverse_bytes(height_ptr, sizeof(header->height));
 
+  // print image details
   printf("IMAGE DETAILS:\n");
   printf("  Magic bytes: %.4s\n", header->magic);
   printf("  Channels: %d\n", header->channels);
@@ -79,7 +79,7 @@ void clear_file_contents(const char *filepath) {
   fclose(output_fp);
 }
 
-void write_bytes(rgb_vals curr_pixel, FILE *file) {
+void write_pixel(rgb_vals curr_pixel, FILE *file) {
     //float target_r = (1 - (curr_pixel.a / 255.0)) * 40.0 / 255.0 + (curr_pixel.a / 255.0) * (curr_pixel.r / 255.0);
     //float target_g = (1 - (curr_pixel.a / 255.0)) * 40.0 / 255.0 + (curr_pixel.a / 255.0) * (curr_pixel.g / 255.0);
     //float target_b = (1 - (curr_pixel.a / 255.0)) * 40.0 / 255.0 + (curr_pixel.a / 255.0) * (curr_pixel.b / 255.0);
@@ -93,7 +93,7 @@ void write_bytes(rgb_vals curr_pixel, FILE *file) {
 }
 
 void decode(uint8_t *image_data, int image_size, FILE *output_fp) {
-  rgb_vals curr_pixel = {0, 0, 0, 255}, prev_vals[64];
+  rgb_vals curr_pixel = {0, 0, 0, 255}, pixel_arr[64];
   uint32_t run = 0;
 
   for (size_t i = 0; i < image_size; ++i) {
@@ -121,7 +121,7 @@ void decode(uint8_t *image_data, int image_size, FILE *output_fp) {
       curr_pixel.a = image_data[++i];
     } else if ((curr_byte >> 6) == 0x00) {
       uint32_t index = curr_byte & 0x3F;
-      curr_pixel = prev_vals[index];
+      curr_pixel = pixel_arr[index];
     } else if ((curr_byte >> 6) == 0x01) {
       int8_t dr = ((curr_byte >> 4) & 0x03) - 2;
       int8_t dg = ((curr_byte >> 2) & 0x03) - 2;
@@ -140,7 +140,7 @@ void decode(uint8_t *image_data, int image_size, FILE *output_fp) {
     } else if ((curr_byte >> 6) == 0x03) {
       run = (curr_byte & 0x3F);
       while (run--) {
-        write_bytes(curr_pixel, output_fp);
+        write_pixel(curr_pixel, output_fp);
       }
     } else {
       fprintf(stderr, "ERROR: unable to parse byte: %hhu\n", curr_byte);
@@ -148,12 +148,11 @@ void decode(uint8_t *image_data, int image_size, FILE *output_fp) {
     }
 
     uint32_t prev_index = (curr_pixel.r * 3 + curr_pixel.g * 5 + curr_pixel.b * 7 + curr_pixel.a * 11) % 64;
-    prev_vals[prev_index] = curr_pixel;
+    pixel_arr[prev_index] = curr_pixel;
 
-    write_bytes(curr_pixel, output_fp);
+    write_pixel(curr_pixel, output_fp);
   }
 }
-
 
 int main(int argc, char **argv) {
   char *program = *argv++;
@@ -164,49 +163,50 @@ int main(int argc, char **argv) {
   }
 
   // open QOI image file
-  char *input_file = *argv++;
-  FILE *input_fp = fopen(input_file, "rb");
+  char *input_filepath = *argv++;
+  FILE *input_fp = fopen(input_filepath, "rb");
   if (input_fp == NULL) {
-    fprintf(stderr, "ERROR: could not open %s: %s\n", input_file, strerror(errno));
+    fprintf(stderr, "ERROR: could not open %s: %s\n", input_filepath, strerror(errno));
     exit(1);
   }
 
   // load image data
   int input_size = get_file_size(input_fp);
-  uint8_t *file_data = malloc(input_size);
-  if (!file_data) {
+  uint8_t *input_data = malloc(input_size);
+  if (!input_data) {
     fprintf(stderr, "ERROR: malloc failed: %s\n", strerror(errno));
     exit(1);
   }
-  read_bytes(file_data, input_size, input_fp);
+  read_bytes(input_data, input_size, input_fp);
 
   fclose(input_fp);
 
   // interpret first 14 bytes as header
-  uint8_t *header_bytes = file_data;
+  uint8_t *header_bytes = input_data;
   qoi_header *header = (qoi_header *) header_bytes;
   const char *qoi_magic = "qoif";
   if (strcmp(header->magic, qoi_magic) != 0) {
     fprintf(stderr, "ERROR: this does not seem to be a QOI image file.\n");
     exit(1);
   }
-  interpret_header(header);
+
+  print_image_details(header);
 
   // set up output file
-  const char *output_file = "output.ppm";
-  clear_file_contents(output_file);
-  FILE *output_fp = fopen(output_file, "a");
+  const char *output_filepath = "output.ppm";
+  clear_file_contents(output_filepath);
+  FILE *output_fp = fopen(output_filepath, "a");
   if (output_fp == NULL) {
-    fprintf(stderr, "ERROR: could not open %s: %s\n", output_file, strerror(errno));
+    fprintf(stderr, "ERROR: could not open %s: %s\n", output_filepath, strerror(errno));
     exit(1);
   }
 
   // write header for PPM format
   fprintf(output_fp, "P6 %d %d 255\n", header->width, header->height);
 
-  decode(file_data + HEADER_SIZE, input_size - HEADER_SIZE - END_MARKER_SIZE, output_fp);
+  decode(input_data + HEADER_SIZE, input_size - HEADER_SIZE - END_MARKER_SIZE, output_fp);
 
-  free(file_data);
+  free(input_data);
   fclose(output_fp);
 
   return 0;
